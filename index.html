@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collator Monitor for Acurast</title>
+<meta name="description" content="Live view of Acurast Mainnet and Canary collators: whose turn it is, who authored, who missed. Read straight from the chain in your browser.">
+<meta property="og:title" content="Collator Monitor for Acurast">
+<meta property="og:description" content="Who is producing blocks on Acurast right now, who missed their turn — straight from the chain.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' transform='skewX(-12)' fill='%23c6f432'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0b0c0a; --panel: #131512; --panel-2: #191c17; --line: #262a23; --text: #eef0e9; --muted: #9aa093;
+  --accent: #c6f432; --accent-ink: #0b0c0a; --ok: #6fd36f; --warn: #f2b33d; --bad: #ff6b5e;
+  --ok-bg: rgba(111,211,111,.12); --warn-bg: rgba(242,179,61,.14); --bad-bg: rgba(255,107,94,.14);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f7f2; --panel: #ffffff; --panel-2: #f0f2ea; --line: #dfe2d6; --text: #171a14; --muted: #5f6657;
+    --accent: #5f8f00; --accent-ink: #ffffff; --ok: #2f8f2f; --warn: #b07400; --bad: #c8382b;
+    --ok-bg: rgba(47,143,47,.10); --warn-bg: rgba(176,116,0,.12); --bad-bg: rgba(200,56,43,.10);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); }
+a { color: inherit; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 28px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.mark { width: 22px; height: 22px; background: var(--accent); transform: skewX(-12deg); flex: none; }
+h1 { margin: 0; font-size: 26px; line-height: 1.1; letter-spacing: -.01em; }
+.sub { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: none; color: var(--muted); font: 600 14px var(--sans); padding: 8px 14px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+select, input[type=search] { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 9px; font: 14px var(--sans); padding: 8px 10px; }
+input[type=search] { width: 100%; max-width: 360px; }
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.tile .k { color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.tile .v { font: 600 22px/1.25 var(--mono); margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .s { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; margin: 0 0 10px; }
+.status { color: var(--muted); font-size: 13px; }
+.status b { color: var(--text); font-weight: 600; }
+.err { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; display: none; }
+.tablebox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 860px; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--panel-2); position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-family: var(--mono); }
+.turn { font: 600 14px var(--mono); color: var(--muted); }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dot { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.addr { font: 13.5px var(--mono); white-space: nowrap; }
+.icon-btn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px 4px; font: 12px var(--sans); border-radius: 6px; }
+.icon-btn:hover { color: var(--text); background: var(--panel-2); }
+.role { font-size: 13px; white-space: nowrap; }
+.role .dep { color: var(--muted); font-family: var(--mono); font-size: 12.5px; }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .03em; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted); }
+.last .ago { display: block; color: var(--muted); font-size: 12.5px; font-family: var(--sans); }
+.rel { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.meter { width: 86px; height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; flex: none; }
+.meter i { display: block; height: 100%; background: var(--ok); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); background: var(--ok-bg); }
+.pill.warn { color: var(--warn); background: var(--warn-bg); }
+.pill.bad { color: var(--bad); background: var(--bad-bg); }
+.pill.idle { color: var(--muted); background: var(--panel-2); }
+tr.hit td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.empty { color: var(--muted); padding: 28px 14px; text-align: center; }
+h2 { font-size: 16px; margin: 28px 0 10px; }
+.note { color: var(--muted); font-size: 13.5px; }
+details { margin-top: 26px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+summary { cursor: pointer; font-weight: 600; }
+details p, details li { color: var(--muted); font-size: 14px; }
+details code { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+footer { margin-top: 28px; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; }
+@media (max-width: 860px) { .tiles { grid-template-columns: repeat(2, 1fr); } .tile:first-child { grid-column: 1 / -1; } }
+@media (max-width: 520px) { h1 { font-size: 22px; } .tile .v { font-size: 19px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="brand"><div class="mark" aria-hidden="true"></div><h1>Collator Monitor <span style="color:var(--muted);font-weight:500">for Acurast</span></h1></div>
+      <p class="sub">Who is producing blocks right now, who missed their turn. Read straight from the chain in your browser.</p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Network">
+        <button type="button" data-net="mainnet" aria-pressed="true">Mainnet</button>
+        <button type="button" data-net="canary" aria-pressed="false">Canary</button>
+      </div>
+      <label class="note">Window
+        <select id="win" aria-label="Window">
+          <option value="300">≈ 30 min</option>
+          <option value="600" selected>≈ 1 hour</option>
+          <option value="1800">≈ 3 hours</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div class="err" id="err" role="alert"></div>
+
+  <section class="tiles" aria-label="Network summary">
+    <div class="tile"><div class="k">Best block</div><div class="v" id="t-best">—</div><div class="s" id="t-best-s">&nbsp;</div></div>
+    <div class="tile"><div class="k">Session</div><div class="v" id="t-session">—</div><div class="s" id="t-session-s">&nbsp;</div></div>
+    <div class="tile"><div class="k">Active collators</div><div class="v" id="t-n">—</div><div class="s" id="t-n-s">&nbsp;</div></div>
+    <div class="tile"><div class="k">Slots filled</div><div class="v" id="t-fill">—</div><div class="s" id="t-fill-s">&nbsp;</div></div>
+    <div class="tile"><div class="k">Block time</div><div class="v" id="t-bt">—</div><div class="s" id="t-bt-s">&nbsp;</div></div>
+  </section>
+
+  <div class="bar">
+    <input type="search" id="q" placeholder="Find a collator by address" aria-label="Find a collator by address">
+    <div class="status" id="status">Loading…</div>
+  </div>
+
+  <div class="tablebox">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col" title="Position in the round-robin (Session.Validators)">Turn</th>
+          <th scope="col">Collator</th>
+          <th scope="col">Role</th>
+          <th scope="col" class="num">Last block</th>
+          <th scope="col" class="num" title="Blocks authored / own slots missed inside the window">Authored · missed</th>
+          <th scope="col" class="num">Reliability</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Reading the chain…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div id="waiting"></div>
+
+  <details>
+    <summary>How it works</summary>
+    <ul>
+      <li>Acurast uses Aura: block production is a round-robin. Every 6-second slot belongs to the collator at position <code>slot mod N</code> in <code>Session.Validators</code> (the “Turn” column).</li>
+      <li>For each block in the window the page reads the slot from the block header and credits the collator whose turn it was. A slot with no block is counted as missed for that collator.</li>
+      <li>“Last block” is <code>CollatorSelection.LastAuthoredBlock</code>, the value the chain itself uses to remove candidates that stopped authoring.</li>
+      <li>If the collator set changed inside the window, only blocks after the change are counted.</li>
+      <li>Times are estimates from slot numbers. Status: <em>On track</em> = authored on its last turn; <em>Missed</em> = its last 1–2 turns passed without a block; <em>Silent</em> = 3 or more.</li>
+      <li>Nothing is stored and there is no backend: your browser asks a public RPC node directly (dishich.com RPC first, Acurast public RPC as fallback) and refreshes every minute.</li>
+    </ul>
+  </details>
+
+  <footer>
+    <div>Community tool, not affiliated with Acurast. Built by <a href="https://x.com/dishich_ofc">@dishich_ofc</a>, collator operator in Lisbon.</div>
+    <div><a href="https://github.com/dishich/acurast-collator-monitor">Source on GitHub</a> · MIT</div>
+  </footer>
+</div>
+
+<script type="module">
+import { NETWORKS, snapshot, formatAcu } from './chain.js';
+
+const REFRESH_MS = 60000;
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } },
+};
+
+const state = {
+  net: location.hash === '#canary' ? 'canary' : 'mainnet',
+  win: Number(store.get('win')) || 600,
+  caches: { mainnet: new Map(), canary: new Map() },
+  data: null, rpc: null, updated: null, loading: false, timer: null, q: '',
+};
+$('win').value = String(state.win);
+if (!$('win').value) { state.win = 600; $('win').value = '600'; }
+
+const fmt = (n) => n.toLocaleString('en-US');
+function ago(sec) {
+  if (sec < 90) return `${Math.round(sec)} s`;
+  if (sec < 5400) return `${Math.round(sec / 60)} min`;
+  if (sec < 172800) return `${(sec / 3600).toFixed(1)} h`;
+  return `${Math.round(sec / 86400)} d`;
+}
+function hue(hex) { return (parseInt(hex.slice(2, 8), 16) % 360); }
+function short(a) { return a.slice(0, 6) + '…' + a.slice(-6); }
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function status(r, N) {
+  if (r.lag === null) return ['idle', 'No block yet'];
+  const missedTurns = r.lag <= 0 ? 0 : Math.floor((r.lag - 1) / N);
+  if (missedTurns === 0) return ['ok', 'On track'];
+  if (missedTurns <= 2) return ['warn', `Missed ${missedTurns} turn${missedTurns > 1 ? 's' : ''}`];
+  return ['bad', `Silent · ${fmt(missedTurns)} turns`];
+}
+
+function render() {
+  const d = state.data;
+  if (!d) return;
+  const net = NETWORKS[state.net];
+  $('t-best').textContent = '#' + fmt(d.best);
+  $('t-best-s').textContent = state.rpc ? 'via ' + state.rpc : '';
+  $('t-session').textContent = d.session === null ? '—' : fmt(d.session);
+  $('t-session-s').textContent = d.window.setChanged ? 'set changed in window' : 'set unchanged in window';
+  $('t-n').textContent = String(d.N);
+  $('t-n-s').textContent = `${d.invulnerableCount} invulnerable · ${d.N - d.invulnerableCount} candidates`;
+  const fill = d.slotsTotal ? (1 - d.missedTotal / d.slotsTotal) * 100 : 100;
+  $('t-fill').textContent = fill.toFixed(1) + '%';
+  $('t-fill-s').textContent = `${fmt(d.missedTotal)} of ${fmt(d.slotsTotal)} slots missed`;
+  $('t-bt').textContent = d.blockSec.toFixed(2) + ' s';
+  $('t-bt-s').textContent = `slot ${d.slotMs / 1000} s · ${fmt(d.window.blocks)} blocks read`;
+
+  const q = state.q.trim().toLowerCase();
+  const body = d.rows.map((r) => {
+    const [cls, label] = status(r, d.N);
+    const hit = q && (r.address.toLowerCase().includes(q) || r.pub.includes(q));
+    const role = r.kind === 'invulnerable'
+      ? '<span class="badge">Invulnerable</span>'
+      : `Candidate${r.deposit !== null ? ` <span class="dep">· ${formatAcu(r.deposit)} ACU</span>` : ''}`;
+    const last = r.lastAuthored === null ? '—'
+      : `#${fmt(r.lastAuthored)}<span class="ago">${r.lag === 0 ? 'best block' : `${fmt(r.lag)} block${r.lag === 1 ? '' : 's'} · ≈ ${ago(r.lag * d.blockSec)} ago`}</span>`;
+    const rel = r.reliability === null ? '—'
+      : `<div class="rel">${(r.reliability * 100).toFixed(r.reliability === 1 ? 0 : 1)}%<span class="meter" aria-hidden="true"><i style="width:${(r.reliability * 100).toFixed(1)}%;background:var(--${r.reliability >= 0.95 ? 'ok' : r.reliability >= 0.8 ? 'warn' : 'bad'})"></i></span></div>`;
+    const link = net.explorer ? ` <a class="icon-btn" href="${net.explorer}${r.pub}" target="_blank" rel="noopener" title="Open in Acurast Hub explorer">↗</a>` : '';
+    return `<tr class="${hit ? 'hit' : ''}">
+      <td class="turn">${r.turn}</td>
+      <td><div class="who"><span class="dot" style="background:hsl(${hue(r.pub)} 70% 55%)"></span><span class="addr" title="${esc(r.address)}">${esc(short(r.address))}</span><button class="icon-btn" data-copy="${esc(r.address)}" title="Copy address">copy</button>${link}</div></td>
+      <td class="role">${role}</td>
+      <td class="num last">${last}</td>
+      <td class="num">${fmt(r.authored)} · ${r.missed ? `<b style="color:var(--warn)">${fmt(r.missed)}</b>` : '0'}</td>
+      <td class="num">${rel}</td>
+      <td><span class="pill ${cls}">${label}</span></td>
+    </tr>`;
+  });
+  $('rows').innerHTML = body.join('') || '<tr><td colspan="7" class="empty">No collators.</td></tr>';
+  if (q) { const el = document.querySelector('tr.hit'); if (el) el.scrollIntoView({ block: 'nearest' }); }
+
+  $('waiting').innerHTML = d.waiting.length ? `<h2>Candidates waiting for the next session</h2>
+    <p class="note">Registered in <code>CollatorSelection.CandidateList</code> but not in the current session's set yet.</p>
+    <div class="tablebox"><table style="min-width:520px"><thead><tr><th>Candidate</th><th class="num">Deposit</th><th class="num">Last block</th></tr></thead><tbody>
+    ${d.waiting.map((w) => `<tr><td class="addr">${esc(w.address)}</td><td class="num">${formatAcu(w.deposit)} ACU</td><td class="num">${w.lastAuthored === null ? '—' : '#' + fmt(w.lastAuthored)}</td></tr>`).join('')}
+    </tbody></table></div>` : '';
+  tick();
+}
+
+function tick() {
+  if (!state.updated) return;
+  const s = Math.round((Date.now() - state.updated) / 1000);
+  const next = Math.max(0, Math.round((REFRESH_MS - (Date.now() - state.updated)) / 1000));
+  $('status').innerHTML = state.loading ? 'Refreshing…' : `Updated <b>${s} s ago</b> · next in ${next} s · ${NETWORKS[state.net].name}`;
+}
+
+async function load() {
+  if (state.loading) return;
+  state.loading = true;
+  const net = state.net;
+  const rpcs = NETWORKS[net].rpcs;
+  let lastErr = null;
+  tick();
+  for (const cfg of rpcs) {
+    try {
+      const d = await snapshot(cfg, state.win, state.caches[net]);
+      if (net !== state.net) { state.loading = false; return load(); }
+      state.data = d; state.rpc = cfg.label; state.updated = Date.now();
+      $('err').style.display = 'none';
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      state.caches[net].clear();
+    }
+  }
+  state.loading = false;
+  if (lastErr) {
+    $('err').textContent = `Could not read the chain: ${lastErr.message}. Retrying in a minute.`;
+    $('err').style.display = 'block';
+    state.updated = Date.now();
+  }
+  render();
+}
+
+function schedule() {
+  clearInterval(state.timer);
+  state.timer = setInterval(() => {
+    if (!document.hidden && state.updated && Date.now() - state.updated >= REFRESH_MS) load();
+    tick();
+  }, 1000);
+}
+
+function setNet(net) {
+  state.net = net;
+  history.replaceState(null, '', '#' + net);
+  document.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.net === net)));
+  state.data = null; state.updated = null;
+  $('rows').innerHTML = `<tr><td colspan="7" class="empty">Reading the last ${fmt(state.win)} ${NETWORKS[net].name} blocks…</td></tr>`;
+  $('waiting').innerHTML = '';
+  load();
+}
+
+document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setNet(b.dataset.net)));
+$('win').addEventListener('change', (e) => { state.win = Number(e.target.value); store.set('win', e.target.value); setNet(state.net); });
+$('q').addEventListener('input', (e) => { state.q = e.target.value; render(); });
+$('rows').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'copied'; setTimeout(() => { b.textContent = 'copy'; }, 1200); } catch { /* clipboard blocked */ }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.updated && Date.now() - state.updated >= REFRESH_MS) load(); });
+window.addEventListener('hashchange', () => { const n = location.hash === '#canary' ? 'canary' : 'mainnet'; if (n !== state.net) setNet(n); });
+
+setNet(state.net);
+schedule();
+</script>
+</body>
+</html>
